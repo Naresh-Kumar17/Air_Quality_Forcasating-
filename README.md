@@ -30,6 +30,7 @@ New readings are collected live with a small script, so the dataset keeps growin
 | `collector.py` | Saves one new reading every hour to `live_data.csv` (keep it running) |
 | `analysis.ipynb` | Phase 2 (cleaning and features) and Phase 3 (EDA with 5 charts). Saves `clean_data.csv` |
 | `app.py` | Interactive dashboard (time cursor, forecast horizon, spike toggle). Run with `streamlit run app.py` |
+| `analysis_phase6.ipynb` | Phase 6: Linear Regression, Random Forest, Gradient Boosting vs SARIMA, feature importance, sensitivity check, optional "high PM2.5" classification. Saves `model_comparison.csv`, `sensitivity_results.csv`, `model.pkl` |
 | `analysis_phase4_5.ipynb` | Phase 4 (SARIMA forecasting) and Phase 5 (spike detection). Saves `sarima_results.csv` and `spike_flags.csv` |
 
 Files created when you run the code:
@@ -41,6 +42,7 @@ Files created when you run the code:
 | `clean_data.csv` | `analysis.ipynb` |
 | `sarima_results.csv` | `analysis_phase4_5.ipynb` |
 | `spike_flags.csv` | `analysis_phase4_5.ipynb` |
+| `model_comparison.csv`, `sensitivity_results.csv`, `model.pkl` | `analysis_phase6.ipynb` |
 
 ## Setup
 
@@ -63,7 +65,8 @@ pip install requests pandas numpy matplotlib seaborn scikit-learn statsmodels ju
    ```
 4. Open `analysis.ipynb` and run all cells from top to bottom (Phases 2 and 3).
 5. Open `analysis_phase4_5.ipynb` and run all cells from top to bottom (Phases 4 and 5). The SARIMA step can take about a minute.
-6. Start the dashboard:
+6. Open `analysis_phase6.ipynb` and run all cells (Phase 6). Set `use_gradient_boosting = False` in the first cell until Gradient Boosting is taught.
+7. Start the dashboard:
    ```
    streamlit run app.py
    ```
@@ -77,7 +80,7 @@ pip install requests pandas numpy matplotlib seaborn scikit-learn statsmodels ju
 | Isolation Forest | Main spike detection | Done (Phase 5) |
 | Simple rule (95th percentile) | Comparison for spike detection | Done (Phase 5) |
 | DBSCAN | Optional second opinion for spike detection | Done (Phase 5) |
-| Linear Regression, Random Forest, Gradient Boosting | Baselines, added after each is taught in class | Planned (Phase 6) |
+| Linear Regression, Random Forest, Gradient Boosting | Baselines, added after each is taught in class | Done (Phase 6) |
 
 **Evaluation:** RMSE and MAE at +1, +6, +24, +48, and +72 hours. The data is split by time (earlier 80% for training, latest 20% for testing), never shuffled. Lag and rolling features use only past values so the models never see the future.
 
@@ -90,9 +93,9 @@ pip install requests pandas numpy matplotlib seaborn scikit-learn statsmodels ju
 | 3 | Exploration (EDA) | Done |
 | 4 | SARIMA forecasting | Done |
 | 5 | Spike detection | Done |
-| 6 | Baselines and model comparison | Planned |
-| 7 | Streamlit dashboard (`app.py`) | First version done |
-| 8 | Final report (PDF) and presentation slides | Planned |
+| 6 | Baselines and model comparison | Done |
+| 7 | Streamlit dashboard (`app.py`) | Done |
+| 8 | Final report (PDF) and presentation slides | Report draft ready, slides planned |
 
 ## Notes
 

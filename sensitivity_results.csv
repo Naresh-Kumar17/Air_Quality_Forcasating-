@@ -1,0 +1,4 @@
+version,RMSE,MAE
+All features,7.37,6.57
+Without weather,7.59,6.78
+Shorter training window,8.08,6.73

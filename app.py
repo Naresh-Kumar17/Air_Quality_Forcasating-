@@ -1,7 +1,10 @@
 # A small interactive dashboard for the Karachi air quality project
 # Run it with:  streamlit run app.py
-# Needs these files in the same folder: clean_data.csv and spike_flags.csv
+# Needs these files in the same folder: clean_data.csv, spike_flags.csv,
+# model.pkl and model_comparison.csv (the last two come from analysis_phase6.ipynb)
 
+import os
+import pickle
 import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
@@ -14,8 +17,9 @@ limit = 35
 
 
 # ---------- load the data ----------
+# the two file times are passed in so the data reloads whenever the files change
 @st.cache_data
-def load_data():
+def load_data(clean_time, flags_time):
     clean = pd.read_csv("clean_data.csv")
     clean["time"] = pd.to_datetime(clean["time"])
 
@@ -37,7 +41,21 @@ def fit_model(train_values):
     return results
 
 
-table = load_data()
+# ---------- load the saved Random Forest (+24 hours) from Phase 6 ----------
+@st.cache_resource
+def load_saved_model():
+    try:
+        with open("model.pkl", "rb") as file:
+            saved = pickle.load(file)
+        return saved
+    except FileNotFoundError:
+        return None
+
+
+clean_time = os.path.getmtime("clean_data.csv")
+flags_time = os.path.getmtime("spike_flags.csv")
+table = load_data(clean_time, flags_time)
+saved_model = load_saved_model()
 pm = table["pm2_5"]
 test_start = int(len(pm) * 0.8)
 
@@ -47,6 +65,10 @@ results = fit_model(pm[:test_start])
 # ---------- title ----------
 st.title("Karachi Air Quality")
 st.caption("Data: Open-Meteo (CAMS model, not ground sensors). Forecast model: SARIMA.")
+
+latest_hour = table["time"].max().strftime("%d %b %Y, %H:%M")
+files_updated = pd.Timestamp(clean_time, unit="s").strftime("%d %b %Y, %H:%M")
+st.info("Latest hour in the data: " + latest_hour + "  |  clean_data.csv last updated: " + files_updated + "  |  Run refresh.py to update.")
 
 
 # ---------- sidebar controls ----------
@@ -90,6 +112,14 @@ band = forecast.conf_int()
 
 forecast_at_end = forecast_values.iloc[horizon - 1]
 
+# Random Forest forecast for +24 hours (only if model.pkl exists)
+rf_forecast = None
+if saved_model is not None:
+    ml_input = table.loc[[position]].copy()
+    ml_input["target_hour"] = ml_input["hour"]        # +24 hours = same hour of day
+    ml_input = ml_input[saved_model["features"]]
+    rf_forecast = saved_model["model"].predict(ml_input)[0]
+
 
 # ---------- numbers at the top ----------
 if row["pm2_5"] > limit:
@@ -108,10 +138,15 @@ col2.metric("Status (limit " + str(limit) + ")", status)
 col3.metric("Forecast in " + str(horizon) + " h", str(round(forecast_at_end, 1)) + " ug/m3")
 col4.metric("Spike flagged?", spike_text)
 
-col5, col6, col7 = st.columns(3)
+col5, col6, col7, col8 = st.columns(4)
 col5.metric("Temperature", str(round(row["temperature_2m"], 1)) + " C")
 col6.metric("Humidity", str(round(row["relative_humidity_2m"])) + " %")
 col7.metric("Wind", str(round(row["wind_speed_10m"], 1)) + " km/h")
+
+if rf_forecast is not None:
+    col8.metric("Random Forest in 24 h", str(round(rf_forecast, 1)) + " ug/m3")
+else:
+    col8.metric("Random Forest in 24 h", "run Phase 6")
 
 
 # ---------- chart ----------
@@ -142,6 +177,9 @@ if show_spikes:
     spike_points = past_table[past_table["if_spike"] == 1]
     ax.scatter(spike_points["time"], spike_points["pm2_5"], color="red", s=40, label="Spike")
 
+if rf_forecast is not None:
+    ax.scatter([row["time"] + pd.Timedelta(hours=24)], [rf_forecast], color="purple", s=60, marker="D", label="Random Forest (+24 h)")
+
 ax.axhline(limit, color="red", linestyle=":", label="Limit (example)")
 ax.axvline(row["time"], color="black", linestyle="--")
 ax.set_xlabel("Time")
@@ -161,10 +199,17 @@ else:
     st.success("PM2.5 looks normal at this time.")
 
 
-# ---------- model results table ----------
-st.subheader("Forecast error by horizon (from Phase 4)")
+# ---------- model comparison ----------
+st.subheader("Model comparison (RMSE by forecast horizon)")
 try:
-    results_table = pd.read_csv("sarima_results.csv")
-    st.dataframe(results_table)
+    compare = pd.read_csv("model_comparison.csv")
+
+    rmse_columns = []
+    for column in compare.columns:
+        if column.endswith("_RMSE"):
+            rmse_columns.append(column)
+
+    st.line_chart(compare.set_index("horizon_hours")[rmse_columns])
+    st.dataframe(compare)
 except FileNotFoundError:
-    st.info("Run analysis_phase4_5.ipynb first to create sarima_results.csv.")
+    st.info("Run analysis_phase6.ipynb first to create model_comparison.csv.")
