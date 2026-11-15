@@ -1,7 +1,7 @@
 # A small interactive dashboard for the Karachi air quality project
 # Run it with:  streamlit run app.py
 # Needs these files in the same folder: clean_data.csv, spike_flags.csv,
-# model.pkl and model_comparison.csv (the last two come from analysis_phase6.ipynb)
+# model.pkl and model_comparison.csv (the last two come from the notebook)
 
 import os
 import pickle
@@ -12,8 +12,46 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 st.set_page_config(page_title="Karachi Air Quality", layout="wide")
 
-# example limit for "unhealthy" (confirm the standard you cite in the report)
-limit = 35
+# the SARIMA model looks at the last 14 days of history when it makes a forecast
+history_window = 24 * 14
+
+# US EPA PM2.5 health categories (2024 update): (upper limit, name, color, text color, tip)
+# They are made for 24-hour averages, so hourly values are only a guide. Confirm the standard you cite.
+categories = [
+    (9.0, "Good", "#00e400", "black", "Air is clean. Normal outdoor activity is fine."),
+    (35.4, "Moderate", "#ffff00", "black", "Acceptable. Unusually sensitive people may want to limit long outdoor effort."),
+    (55.4, "Unhealthy for sensitive groups", "#ff7e00", "black", "People with asthma or heart problems, children and older adults should reduce long or heavy outdoor activity."),
+    (125.4, "Unhealthy", "#ff0000", "white", "Everyone should reduce long or heavy outdoor activity. Sensitive groups should avoid it. Consider a well-fitted N95 mask outdoors."),
+    (225.4, "Very unhealthy", "#8f3f97", "white", "Avoid outdoor activity. Stay indoors with windows closed if you can."),
+    (100000, "Hazardous", "#7e0023", "white", "Stay indoors and avoid all outdoor activity."),
+]
+
+
+def get_category(value):
+    for upper, name, color, text_color, tip in categories:
+        if value <= upper:
+            return name, color, text_color, tip
+    return "Hazardous", "#7e0023", "white", "Stay indoors."
+
+
+# typical error from the notebook results (optional files)
+@st.cache_data
+def load_error_info(clean_time):
+    info = {}
+    try:
+        error_table = pd.read_csv("model_comparison.csv")
+    except FileNotFoundError:
+        try:
+            error_table = pd.read_csv("sarima_results.csv")
+        except FileNotFoundError:
+            error_table = None
+    info["errors"] = error_table
+
+    try:
+        info["coverage"] = pd.read_csv("band_coverage.csv")
+    except FileNotFoundError:
+        info["coverage"] = None
+    return info
 
 
 # ---------- load the data ----------
@@ -59,7 +97,8 @@ saved_model = load_saved_model()
 pm = table["pm2_5"]
 test_start = int(len(pm) * 0.8)
 
-results = fit_model(pm[:test_start])
+# fit on the last 90 days before the test period (same as the notebook)
+results = fit_model(pm[:test_start][-24 * 90:])
 
 
 # ---------- title ----------
@@ -104,7 +143,7 @@ row = table.loc[position]
 
 
 # ---------- forecast from the cursor ----------
-history = pm[: position + 1]
+history = pm[max(0, position + 1 - history_window) : position + 1]
 new_results = results.apply(history, refit=False)
 forecast = new_results.get_forecast(steps=horizon)
 forecast_values = forecast.predicted_mean
@@ -122,10 +161,7 @@ if saved_model is not None:
 
 
 # ---------- numbers at the top ----------
-if row["pm2_5"] > limit:
-    status = "Above limit"
-else:
-    status = "Within limit"
+category_name, category_color, category_text, category_tip = get_category(row["pm2_5"])
 
 if row["if_spike"] == 1:
     spike_text = "Yes (Isolation Forest)"
@@ -134,7 +170,7 @@ else:
 
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("PM2.5 at cursor", str(round(row["pm2_5"], 1)) + " ug/m3")
-col2.metric("Status (limit " + str(limit) + ")", status)
+col2.metric("Air quality category", category_name)
 col3.metric("Forecast in " + str(horizon) + " h", str(round(forecast_at_end, 1)) + " ug/m3")
 col4.metric("Spike flagged?", spike_text)
 
@@ -147,6 +183,25 @@ if rf_forecast is not None:
     col8.metric("Random Forest in 24 h", str(round(rf_forecast, 1)) + " ug/m3")
 else:
     col8.metric("Random Forest in 24 h", "run Phase 6")
+
+
+# ---------- how much to trust the forecast ----------
+error_info = load_error_info(clean_time)
+trust_text = "Run the notebook to see the typical forecast error."
+
+if error_info["errors"] is not None:
+    error_row = error_info["errors"][error_info["errors"]["horizon_hours"] == horizon]
+    if len(error_row) == 1:
+        typical_error = error_row["SARIMA_RMSE"].values[0]
+        trust_text = "At +" + str(horizon) + " h the SARIMA forecast is typically off by about " + str(round(typical_error, 1)) + " ug/m3 (RMSE on the test period)."
+
+if error_info["coverage"] is not None:
+    coverage_row = error_info["coverage"][error_info["coverage"]["horizon_hours"] == horizon]
+    if len(coverage_row) == 1:
+        inside = coverage_row["percent_inside_95_band"].values[0]
+        trust_text = trust_text + " The 95% band contained the real value " + str(round(inside)) + "% of the time."
+
+st.info(trust_text)
 
 
 # ---------- chart ----------
@@ -180,7 +235,15 @@ if show_spikes:
 if rf_forecast is not None:
     ax.scatter([row["time"] + pd.Timedelta(hours=24)], [rf_forecast], color="purple", s=60, marker="D", label="Random Forest (+24 h)")
 
-ax.axhline(limit, color="red", linestyle=":", label="Limit (example)")
+# colored health bands behind the lines
+y_top = ax.get_ylim()[1]
+band_low = 0
+for upper, name, color, text_color, tip in categories:
+    if band_low < y_top:
+        ax.axhspan(band_low, min(upper, y_top), color=color, alpha=0.12)
+    band_low = upper
+ax.set_ylim(0, y_top)
+
 ax.axvline(row["time"], color="black", linestyle="--")
 ax.set_xlabel("Time")
 ax.set_ylabel("PM2.5 (ug/m3)")
@@ -190,13 +253,14 @@ fig.autofmt_xdate()
 st.pyplot(fig)
 
 
-# ---------- alert ----------
+# ---------- health banner and alert ----------
+banner = "<div style='background-color:" + category_color + "; color:" + category_text + "; padding:12px; border-radius:8px;'>"
+banner = banner + "<b>" + category_name + "</b>: " + category_tip + "</div>"
+st.markdown(banner, unsafe_allow_html=True)
+st.caption("General guidance based on US EPA categories, not medical advice. Categories are defined for 24-hour averages.")
+
 if row["if_spike"] == 1:
     st.error("Unusual spike at this time (Isolation Forest).")
-elif row["pm2_5"] > limit:
-    st.warning("PM2.5 is above the example limit at this time.")
-else:
-    st.success("PM2.5 looks normal at this time.")
 
 
 # ---------- model comparison ----------
@@ -212,4 +276,4 @@ try:
     st.line_chart(compare.set_index("horizon_hours")[rmse_columns])
     st.dataframe(compare)
 except FileNotFoundError:
-    st.info("Run analysis_phase6.ipynb first to create model_comparison.csv.")
+    st.info("Run the notebook (Part 3) first to create model_comparison.csv.")
