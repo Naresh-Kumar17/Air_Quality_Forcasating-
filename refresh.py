@@ -5,49 +5,29 @@
 #     python -m streamlit run app.py
 #
 # What it does:
-#   1. downloads the last 92 days of hourly data (up to now)
+#   1. downloads the last 365 days of hourly data (up to now)
 #   2. cleans it and adds the same features as analysis.ipynb  -> clean_data.csv
 #   3. flags spikes with Isolation Forest and a simple rule      -> spike_flags.csv
 
 import os
 import shutil
-import requests
 import pandas as pd
 from sklearn.ensemble import IsolationForest
+from data_download import get_history
 
 # ---------- step 1: download fresh data ----------
 print("Step 1: downloading fresh data...")
 
-air_url = "https://air-quality-api.open-meteo.com/v1/air-quality"
-air_settings = {
-    "latitude": 24.86,
-    "longitude": 67.01,
-    "hourly": "pm2_5,pm10,nitrogen_dioxide,ozone",
-    "past_days": 92,
-    "forecast_days": 1,
-    "timezone": "Asia/Karachi",
-}
-air_data = requests.get(air_url, params=air_settings).json()
-air_table = pd.DataFrame(air_data["hourly"])
+# how many days to download (same number you used in backfill.py)
+history_days = 365
 
-weather_url = "https://api.open-meteo.com/v1/forecast"
-weather_settings = {
-    "latitude": 24.86,
-    "longitude": 67.01,
-    "hourly": "temperature_2m,relative_humidity_2m,wind_speed_10m",
-    "past_days": 92,
-    "forecast_days": 1,
-    "timezone": "Asia/Karachi",
-}
-weather_data = requests.get(weather_url, params=weather_settings).json()
-weather_table = pd.DataFrame(weather_data["hourly"])
+table = get_history(history_days)
 
-table = pd.merge(air_table, weather_table, on="time")
+if table is None:
+    print("Download failed, so nothing was changed.")
+    raise SystemExit
 
-# remove future hours (they are only forecasts)
-table["time"] = pd.to_datetime(table["time"])
 now = pd.Timestamp.now(tz="Asia/Karachi").tz_localize(None)
-table = table[table["time"] <= now]
 
 # keep a copy of the old history file before replacing it
 if os.path.exists("karachi_aq_history.csv"):
@@ -56,6 +36,7 @@ if os.path.exists("karachi_aq_history.csv"):
 table.to_csv("karachi_aq_history.csv", index=False)
 print("Your computer clock says:", now)
 print("Downloaded rows:", len(table))
+print("First hour:", table["time"].min())
 print("Latest hour:", table["time"].max())
 
 # ---------- step 2: clean and add features ----------
