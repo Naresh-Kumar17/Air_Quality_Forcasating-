@@ -34,6 +34,17 @@ def get_category(value):
     return "Hazardous", "#7e0023", "white", "Stay indoors."
 
 
+# the +24 hour predictions from the notebook: what the models predicted 24 hours before each hour
+@st.cache_data
+def load_backtest(clean_time):
+    try:
+        backtest = pd.read_csv("backtest_24h.csv")
+        backtest["time"] = pd.to_datetime(backtest["time"])
+        return backtest
+    except FileNotFoundError:
+        return None
+
+
 # typical error from the notebook results (optional files)
 @st.cache_data
 def load_error_info(clean_time):
@@ -115,6 +126,7 @@ st.sidebar.header("Controls")
 horizon = st.sidebar.selectbox("Forecast hours ahead", [6, 24, 48, 72], index=1)
 show_spikes = st.sidebar.checkbox("Show spikes", value=True)
 show_band = st.sidebar.checkbox("Show 95% band", value=True)
+show_past = st.sidebar.checkbox("Show past predictions (made 24 h earlier)", value=True)
 days_before = st.sidebar.slider("Hours of past to show", 24, 240, 96)
 
 
@@ -232,6 +244,27 @@ if show_spikes:
     spike_points = past_table[past_table["if_spike"] == 1]
     ax.scatter(spike_points["time"], spike_points["pm2_5"], color="red", s=40, label="Spike")
 
+# what the models predicted in the past, versus what really happened (the blue line)
+past_note = ""
+if show_past:
+    backtest = load_backtest(clean_time)
+
+    if backtest is None:
+        past_note = "Past predictions need backtest_24h.csv. Run the notebook (Part 3) to create it."
+    else:
+        in_window = backtest[(backtest["time"] >= past_table["time"].min()) & (backtest["time"] <= row["time"])]
+
+        if len(in_window) == 0:
+            past_note = "No past predictions for this window. They exist only for the test period (the last 20% of the data)."
+        else:
+            ax.plot(in_window["time"], in_window["sarima_24h"], color="green", marker="o", markersize=3, linewidth=1, alpha=0.8, label="SARIMA (made 24 h earlier)")
+            ax.plot(in_window["time"], in_window["random_forest_24h"], color="purple", marker="o", markersize=3, linewidth=1, alpha=0.8, label="Random Forest (made 24 h earlier)")
+
+            sarima_miss = (in_window["real"] - in_window["sarima_24h"]).abs().mean()
+            forest_miss = (in_window["real"] - in_window["random_forest_24h"]).abs().mean()
+            past_note = ("In the past part of this window (" + str(len(in_window)) + " points), the +24 h predictions were off by about "
+                         + str(round(sarima_miss, 1)) + " ug/m3 (SARIMA) and " + str(round(forest_miss, 1)) + " ug/m3 (Random Forest) on average.")
+
 if rf_forecast is not None:
     ax.scatter([row["time"] + pd.Timedelta(hours=24)], [rf_forecast], color="purple", s=60, marker="D", label="Random Forest (+24 h)")
 
@@ -251,6 +284,9 @@ ax.legend(loc="upper left")
 fig.autofmt_xdate()
 
 st.pyplot(fig)
+
+if past_note != "":
+    st.caption(past_note)
 
 
 # ---------- health banner and alert ----------
