@@ -16,7 +16,7 @@ This project collects hourly air quality and weather data for Karachi and uses i
 
 - **API:** Open-Meteo Air Quality API and Open-Meteo Weather API (free, no key needed).
 - **Location:** Karachi (latitude 24.86, longitude 67.01).
-- **History:** 365 days by default (set `history_days` in `backfill.py` and `refresh.py`). The air quality service has data from 2022, so longer is possible.
+- **History:** 730 days (2 years) by default (set `history_days` in `backfill.py` and `refresh.py`). The air quality service has data from 2022, so longer is possible.
 - **Air quality columns:** `pm2_5`, `pm10`, `nitrogen_dioxide`, `ozone`
 - **Weather columns:** `temperature_2m`, `relative_humidity_2m`, `wind_speed_10m`
 
@@ -33,6 +33,7 @@ This project collects hourly air quality and weather data for Karachi and uses i
 | `collector.py` | Saves a reading every hour to `live_data.csv` and `forecast_log.csv` (keep it running) |
 | `collect_once.py` | Takes one reading (used by `collector.py` and the GitHub Action) |
 | `.github/workflows/collect.yml` | Hourly collection on GitHub, so your laptop can be off |
+| `neo_style.py` and `.streamlit/config.toml` | Neobrutalism look for the dashboard (thick black borders, hard shadows, bright flat colors) |
 | `app.py` | Interactive dashboard (run with `python -m streamlit run app.py`) |
 | `run_all.py` | Rebuilds everything with one command |
 | `requirements.txt` | Libraries to install |
