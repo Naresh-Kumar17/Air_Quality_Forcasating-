@@ -1,0 +1,8 @@
+horizon_hours,version,RMSE,MAE,R2
+6,A. Direct,5.32,3.78,0.638
+6,B. Predict the change,5.42,3.84,0.624
+6,C. Change + extra columns,5.37,3.79,0.63
+24,A. Direct,6.31,4.63,0.49
+24,B. Predict the change,6.29,4.67,0.494
+24,C. Change + extra columns,6.2,4.66,0.509
+24,D. Average of SARIMA and C,6.12,4.43,0.52
