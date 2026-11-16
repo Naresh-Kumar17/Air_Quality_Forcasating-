@@ -5,7 +5,7 @@
 #     python -m streamlit run app.py
 #
 # What it does:
-#   1. downloads the last 365 days of hourly data (up to now)
+#   1. downloads the last 730 days of hourly data (up to now)
 #   2. cleans it and adds the same features as analysis.ipynb  -> clean_data.csv
 #   3. flags spikes with Isolation Forest and a simple rule      -> spike_flags.csv
 
@@ -19,7 +19,7 @@ from data_download import get_history
 print("Step 1: downloading fresh data...")
 
 # how many days to download (same number you used in backfill.py)
-history_days = 365
+history_days = 730
 
 table = get_history(history_days)
 
