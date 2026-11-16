@@ -1,0 +1,21 @@
+horizon_hours,comparison,p_value,result
+1,SARIMA vs Naive,0.0,SARIMA is better
+1,LinearRegression vs SARIMA,0.0,SARIMA is better
+1,RandomForest vs SARIMA,0.692,no clear difference
+1,GradientBoosting vs SARIMA,0.001,SARIMA is better
+6,SARIMA vs Naive,0.001,SARIMA is better
+6,LinearRegression vs SARIMA,0.465,no clear difference
+6,RandomForest vs SARIMA,0.011,RandomForest is better
+6,GradientBoosting vs SARIMA,0.034,GradientBoosting is better
+24,SARIMA vs Naive,0.506,no clear difference
+24,LinearRegression vs SARIMA,0.025,LinearRegression is better
+24,RandomForest vs SARIMA,0.103,no clear difference
+24,GradientBoosting vs SARIMA,0.017,GradientBoosting is better
+48,SARIMA vs Naive,0.77,no clear difference
+48,LinearRegression vs SARIMA,0.11,no clear difference
+48,RandomForest vs SARIMA,0.152,no clear difference
+48,GradientBoosting vs SARIMA,0.027,GradientBoosting is better
+72,SARIMA vs Naive,0.77,no clear difference
+72,LinearRegression vs SARIMA,0.102,no clear difference
+72,RandomForest vs SARIMA,0.133,no clear difference
+72,GradientBoosting vs SARIMA,0.02,GradientBoosting is better
