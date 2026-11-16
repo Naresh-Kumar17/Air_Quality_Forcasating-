@@ -1,0 +1,5 @@
+model,exact_category_%,within_one_category_%,within_10_ug_%
+naive,90.2,99.9,88.8
+linear,90.8,99.9,91.3
+sarima,90.2,99.8,87.5
+random_forest,89.9,99.9,89.3
