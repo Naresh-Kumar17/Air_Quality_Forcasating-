@@ -3,11 +3,12 @@
 #
 # history_days = how many days to download (more days = more seasons = better results)
 # The air quality service has data from 2022, so up to about 1000 days is possible.
-# 365 days is a good choice: it takes a minute to download.
+# 730 days (2 years) gives two examples of every season. It takes a few minutes to download.
+# If the download stops early, the script says so and keeps what it got.
 
 from data_download import get_history
 
-history_days = 365
+history_days = 730
 
 table = get_history(history_days)
 
