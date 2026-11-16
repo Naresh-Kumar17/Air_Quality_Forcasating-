@@ -125,8 +125,9 @@ st.info("Latest hour in the data: " + latest_hour + "  |  clean_data.csv last up
 st.sidebar.header("Controls")
 horizon = st.sidebar.selectbox("Forecast hours ahead", [6, 24, 48, 72], index=1)
 show_spikes = st.sidebar.checkbox("Show spikes", value=True)
-show_band = st.sidebar.checkbox("Show 95% band", value=True)
-show_past = st.sidebar.checkbox("Show past predictions (made 24 h earlier)", value=True)
+show_band = st.sidebar.checkbox("Show 95% band (forecast chart)", value=True)
+model_choice = st.sidebar.radio("Model for past predictions", ["SARIMA", "Random Forest"])
+show_bands = st.sidebar.checkbox("Show health color bands", value=False)
 days_before = st.sidebar.slider("Hours of past to show", 24, 240, 96)
 
 
@@ -216,9 +217,103 @@ if error_info["coverage"] is not None:
 st.info(trust_text)
 
 
-# ---------- chart ----------
+# ---------- helper: colored health bands (optional) ----------
+def add_health_bands(ax):
+    y_top = ax.get_ylim()[1]
+    band_low = 0
+    for upper, name, color, text_color, tip in categories:
+        if band_low < y_top:
+            ax.axhspan(band_low, min(upper, y_top), color=color, alpha=0.12)
+        band_low = upper
+    ax.set_ylim(0, y_top)
+
+
+# ---------- chart 1: how good were the past predictions? ----------
+st.subheader("1. How good were the past predictions?")
+st.caption("Each dot is a +24 h prediction that was made 24 hours earlier for that hour. The closer a dot is to the blue line, the better the prediction. The gray line shows the size of the miss.")
+
 start = max(0, position - days_before)
 past_table = table[start : position + 1]
+
+backtest = load_backtest(clean_time)
+past_points = None
+message = ""
+
+if backtest is None:
+    message = "Past predictions need backtest_24h.csv. Run the notebook (Part 3) to create it."
+else:
+    past_points = backtest[(backtest["time"] >= past_table["time"].min()) & (backtest["time"] <= row["time"])]
+    if len(past_points) == 0:
+        past_points = None
+        message = "No past predictions for this window. They exist only for the test period (the last 20% of the data). Move the cursor to the right."
+
+if model_choice == "SARIMA":
+    column = "sarima_24h"
+    model_color = "green"
+else:
+    column = "random_forest_24h"
+    model_color = "purple"
+
+fig1, (ax1, ax_error) = plt.subplots(2, 1, figsize=(12, 6), sharex=True, gridspec_kw={"height_ratios": [3, 1]})
+
+ax1.plot(past_table["time"], past_table["pm2_5"], color="blue", label="Actual PM2.5")
+
+if show_spikes:
+    spike_points = past_table[past_table["if_spike"] == 1]
+    if len(spike_points) > 0:
+        ax1.scatter(spike_points["time"], spike_points["pm2_5"], color="red", s=40, zorder=3, label="Spike flagged")
+
+if past_points is not None:
+    # a thin line from each prediction to the real value shows the size of the miss
+    for index, point in past_points.iterrows():
+        ax1.plot([point["time"], point["time"]], [point["real"], point[column]], color="gray", linewidth=0.8)
+
+    ax1.scatter(past_points["time"], past_points[column], color=model_color, s=28, zorder=4,
+                label=model_choice + " prediction (made 24 h earlier)")
+
+    # small chart below: predicted minus actual
+    miss = past_points[column] - past_points["real"]
+    error_colors = []
+    for value in miss:
+        if value >= 0:
+            error_colors.append("orange")
+        else:
+            error_colors.append("steelblue")
+
+    ax_error.bar(past_points["time"], miss, width=0.08, color=error_colors)
+
+ax_error.axhline(0, color="black", linewidth=0.8)
+ax_error.set_ylabel("Miss (ug/m3)\nup = too high")
+
+if show_bands:
+    add_health_bands(ax1)
+
+ax1.set_ylabel("PM2.5 (ug/m3)")
+ax1.legend(loc="center left", bbox_to_anchor=(1.01, 0.5))
+fig1.autofmt_xdate()
+
+st.pyplot(fig1)
+
+if past_points is not None:
+    average_miss = (past_points[column] - past_points["real"]).abs().mean()
+    note = ("Average miss in this window: " + str(round(average_miss, 1)) + " ug/m3 for " + model_choice
+            + " (" + str(len(past_points)) + " predictions, one every 3 hours).")
+
+    last_point_time = past_points["time"].max()
+    gap_hours = (row["time"] - last_point_time).total_seconds() / 3600
+    if gap_hours > 24:
+        note = note + (" The dots stop about " + str(round(gap_hours / 24)) + " days before the cursor, because the notebook only tests"
+                       " forecasts that have 72 hours of real data after them.")
+    st.caption(note)
+else:
+    st.info(message)
+
+
+# ---------- chart 2: forecast from the cursor ----------
+st.subheader("2. Forecast from the cursor")
+st.caption("Where the models think PM2.5 is heading, starting at the black dashed line.")
+
+recent_table = table[max(0, position - 48) : position + 1]
 
 # the real values after the cursor (only if they exist)
 end = min(len(table), position + 1 + horizon)
@@ -229,64 +324,30 @@ future_times = []
 for step in range(1, horizon + 1):
     future_times.append(row["time"] + pd.Timedelta(hours=step))
 
-fig, ax = plt.subplots(figsize=(12, 5))
-ax.plot(past_table["time"], past_table["pm2_5"], color="blue", label="Real PM2.5 (past)")
+fig2, ax2 = plt.subplots(figsize=(12, 4.5))
+ax2.plot(recent_table["time"], recent_table["pm2_5"], color="blue", label="Actual PM2.5 (past)")
 
 if len(future_table) > 0:
-    ax.plot(future_table["time"], future_table["pm2_5"], color="gray", label="Real PM2.5 (after cursor)")
+    ax2.plot(future_table["time"], future_table["pm2_5"], color="gray", label="Actual PM2.5 (after cursor)")
 
-ax.plot(future_times, forecast_values.values, color="green", linestyle="--", label="SARIMA forecast")
+ax2.plot(future_times, forecast_values.values, color="green", linestyle="--", label="SARIMA forecast")
 
 if show_band:
-    ax.fill_between(future_times, band.iloc[:, 0].values, band.iloc[:, 1].values, color="green", alpha=0.2, label="95% band")
-
-if show_spikes:
-    spike_points = past_table[past_table["if_spike"] == 1]
-    ax.scatter(spike_points["time"], spike_points["pm2_5"], color="red", s=40, label="Spike")
-
-# what the models predicted in the past, versus what really happened (the blue line)
-past_note = ""
-if show_past:
-    backtest = load_backtest(clean_time)
-
-    if backtest is None:
-        past_note = "Past predictions need backtest_24h.csv. Run the notebook (Part 3) to create it."
-    else:
-        in_window = backtest[(backtest["time"] >= past_table["time"].min()) & (backtest["time"] <= row["time"])]
-
-        if len(in_window) == 0:
-            past_note = "No past predictions for this window. They exist only for the test period (the last 20% of the data)."
-        else:
-            ax.plot(in_window["time"], in_window["sarima_24h"], color="green", marker="o", markersize=3, linewidth=1, alpha=0.8, label="SARIMA (made 24 h earlier)")
-            ax.plot(in_window["time"], in_window["random_forest_24h"], color="purple", marker="o", markersize=3, linewidth=1, alpha=0.8, label="Random Forest (made 24 h earlier)")
-
-            sarima_miss = (in_window["real"] - in_window["sarima_24h"]).abs().mean()
-            forest_miss = (in_window["real"] - in_window["random_forest_24h"]).abs().mean()
-            past_note = ("In the past part of this window (" + str(len(in_window)) + " points), the +24 h predictions were off by about "
-                         + str(round(sarima_miss, 1)) + " ug/m3 (SARIMA) and " + str(round(forest_miss, 1)) + " ug/m3 (Random Forest) on average.")
+    ax2.fill_between(future_times, band.iloc[:, 0].values, band.iloc[:, 1].values, color="green", alpha=0.2, label="95% band")
 
 if rf_forecast is not None:
-    ax.scatter([row["time"] + pd.Timedelta(hours=24)], [rf_forecast], color="purple", s=60, marker="D", label="Random Forest (+24 h)")
+    ax2.scatter([row["time"] + pd.Timedelta(hours=24)], [rf_forecast], color="purple", s=70, marker="D", zorder=4, label="Random Forest (+24 h)")
 
-# colored health bands behind the lines
-y_top = ax.get_ylim()[1]
-band_low = 0
-for upper, name, color, text_color, tip in categories:
-    if band_low < y_top:
-        ax.axhspan(band_low, min(upper, y_top), color=color, alpha=0.12)
-    band_low = upper
-ax.set_ylim(0, y_top)
+ax2.axvline(row["time"], color="black", linestyle="--")
 
-ax.axvline(row["time"], color="black", linestyle="--")
-ax.set_xlabel("Time")
-ax.set_ylabel("PM2.5 (ug/m3)")
-ax.legend(loc="upper left")
-fig.autofmt_xdate()
+if show_bands:
+    add_health_bands(ax2)
 
-st.pyplot(fig)
+ax2.set_ylabel("PM2.5 (ug/m3)")
+ax2.legend(loc="center left", bbox_to_anchor=(1.01, 0.5))
+fig2.autofmt_xdate()
 
-if past_note != "":
-    st.caption(past_note)
+st.pyplot(fig2)
 
 
 # ---------- health banner and alert ----------
