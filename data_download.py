@@ -15,6 +15,13 @@ longitude = 67.01
 air_columns = "pm2_5,pm10,nitrogen_dioxide,ozone"
 weather_columns = "temperature_2m,relative_humidity_2m,wind_speed_10m"
 
+# weather FORECASTS that were made one day earlier (Open-Meteo "Previous Runs" service)
+# "_previous_day1" = what the weather model predicted for that hour 24 hours before it
+previous_runs_url = "https://previous-runs-api.open-meteo.com/v1/forecast"
+forecast_columns = ("temperature_2m_previous_day1,relative_humidity_2m_previous_day1,"
+                    "wind_speed_10m_previous_day1,wind_direction_10m_previous_day1,"
+                    "surface_pressure_previous_day1,precipitation_previous_day1")
+
 
 def ask_api(url, settings):
     # ask the website for data, try up to 3 times if it fails
@@ -29,6 +36,43 @@ def ask_api(url, settings):
             print("Problem:", error)
         time.sleep(3)
     return None
+
+
+def get_weather_forecasts(start, today):
+    # download the day-ahead weather forecasts in pieces of 90 days
+    pieces = []
+    piece_start = start
+
+    while piece_start <= today:
+        piece_end = piece_start + pd.Timedelta(days=89)
+        if piece_end > today:
+            piece_end = today
+
+        settings = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "hourly": forecast_columns,
+            "start_date": piece_start.strftime("%Y-%m-%d"),
+            "end_date": piece_end.strftime("%Y-%m-%d"),
+            "timezone": "Asia/Karachi",
+        }
+        data = ask_api(previous_runs_url, settings)
+
+        if data is None:
+            print("Could not download the weather forecasts for", settings["start_date"], "to", settings["end_date"])
+            print("Continuing without them (the rest of the project still works).")
+            break
+
+        pieces.append(pd.DataFrame(data["hourly"]))
+        piece_start = piece_end + pd.Timedelta(days=1)
+
+    if len(pieces) == 0:
+        return None
+
+    forecast_table = pd.concat(pieces)
+    forecast_table["time"] = pd.to_datetime(forecast_table["time"])
+    forecast_table = forecast_table.drop_duplicates(subset="time")
+    return forecast_table
 
 
 def get_history(history_days):
@@ -113,6 +157,11 @@ def get_history(history_days):
 
     # ---------- join and remove future hours ----------
     table = pd.merge(air_table, weather_table, on="time")
+
+    # add the day-ahead weather forecasts (kept even if some hours are missing)
+    forecast_table = get_weather_forecasts(first_air_time, today)
+    if forecast_table is not None:
+        table = pd.merge(table, forecast_table, on="time", how="left")
 
     now = pd.Timestamp.now(tz="Asia/Karachi").tz_localize(None)
     table = table[table["time"] <= now]

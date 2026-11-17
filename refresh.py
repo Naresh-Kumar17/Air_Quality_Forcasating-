@@ -74,7 +74,12 @@ past_pm = table["pm2_5"].shift(1)
 table["pm2_5_avg3"] = past_pm.rolling(3).mean()
 table["pm2_5_avg24"] = past_pm.rolling(24).mean()
 
-table = table.dropna()
+# drop rows with missing values, but ignore the day-ahead forecast columns (they may start later)
+check_columns = []
+for name in table.columns:
+    if not name.endswith("_previous_day1"):
+        check_columns.append(name)
+table = table.dropna(subset=check_columns)
 table = table.reset_index(drop=True)
 
 table.to_csv("clean_data.csv", index=False)
