@@ -1,10 +1,10 @@
 check,result
-Rows,17528
-First hour,2024-11-17 00:00:00
-Last hour,2026-11-17 07:00:00
+Rows,17543
+First hour,2024-11-18 00:00:00
+Last hour,2026-11-18 22:00:00
 Missing values (all columns),0
 Duplicate timestamps,0
 Time gaps (not exactly 1 hour),0
-PM2.5 outliers (above 55.0),807
+PM2.5 outliers (above 55.0),811
 PM2.5 below zero,0
 Flat stretches (6 equal values in a row),0
